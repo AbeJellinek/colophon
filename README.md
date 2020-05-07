@@ -15,7 +15,16 @@ $ pip install -r requirements.txt
 ## Usage
 
 ```bash
-$ python colophon.py
+$ python3 colophon.py --help
+usage: colophon.py [-h] [-f FILTER] [-d DATASET] [-o OUTPUT_FILE]
+
+Process Unpaywall data and output MARC.
+
+optional arguments:
+  -h, --help      show this help message and exit
+  -f FILTER       specify path to a file containing paper title regex
+  -d DATASET      specify path to the Unpaywall dataset in GZIP format
+  -o OUTPUT_FILE  specify path of the MRC file to output to
 ```
 
 ## Contributing
