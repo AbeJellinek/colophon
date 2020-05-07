@@ -31,6 +31,7 @@ import regex as re
 import errno
 import gzip
 import json
+import argparse
 
 from tqdm import tqdm
 from datetime import datetime
@@ -38,11 +39,9 @@ from pymarc import Record, Field
 
 
 URL_BASE = 'https://unpaywall-data-snapshots.s3-us-west-2.amazonaws.com/'
-LOCAL_DATA_PATH = 'data/unpaywall_snapshot.jsonl.gz'
 
-with open('filters/jordan', 'r') as file:
-    title_filter = re.compile(file.read().strip())
 title_splitter = re.compile(r'([:;\\/\p{Pd},.])')
+filters = []
 
 def latest_dataset():
     r = requests.get(URL_BASE)
@@ -60,14 +59,14 @@ def latest_dataset():
 
     return path, last_modified, size_in_gb
 
-def prompt_download():
+def prompt_download(local_data_path):
     print('No Unpaywall dataset found. Searching online...')
     path, last_modified, size_in_gb = latest_dataset()
     if path:
         print(f'Dataset found. Last update: {last_modified:%d %b %Y}.')
         if input(f'Download this {size_in_gb:1.1f} GB dataset now? [Y/n] ').lower() != 'n':
             response = requests.get(path, stream=True)
-            with open(LOCAL_DATA_PATH, 'wb') as handle:
+            with open(local_data_path, 'wb') as handle:
                 for data in tqdm(response.iter_content()):
                     handle.write(data)
             print('Done! Proceeding...')
@@ -171,34 +170,56 @@ def process_entry(line):
     obj = json.loads(line)
 
     oa_location = obj['best_oa_location']
+
     if oa_location is None or obj['title'] is None:
         return
 
     title_lower = obj['title'].lower()
-    if title_filter.findall(title_lower):
+
+    if any(pattern.findall(title_lower) for pattern in filters):
         return to_marc(obj)
 
 def main():
+    parser = argparse.ArgumentParser(description='Process Unpaywall data and output MARC.')
+    parser.add_argument('-f', action='append', dest='filter',
+                        help='specify path to a file containing paper title regex')
+    parser.add_argument('-d', dest='dataset', default='data/unpaywall_snapshot.jsonl.gz',
+                        help='specify path to the Unpaywall dataset in GZIP format')
+    parser.add_argument('-o', dest='output_file', default='out.mrc',
+                        help='specify path of the MRC file to output to')
+
+    args = parser.parse_args()
+    
+    local_data_path = args.dataset
+
+    for filename in args.filter:
+        with open(filename, 'r') as file:
+            filters.append(re.compile(file.read().strip()))
+
     print()
     print('Colophon 1.0 by Abe Jellinek <jellinek@berkeley.edu>')
     print('Checking data...')
 
-    downloaded = os.path.isfile(LOCAL_DATA_PATH)
+    if os.path.isfile(args.output_file):
+        if input('Output file exists! Overwrite? [y/N] ').lower() != 'y':
+            os.exit(1)
+
+    downloaded = os.path.isfile(local_data_path)
 
     if not downloaded:
-        if not os.path.exists(os.path.dirname(LOCAL_DATA_PATH)):
+        if not os.path.exists(os.path.dirname(local_data_path)):
             try:
-                os.makedirs(os.path.dirname(LOCAL_DATA_PATH))
+                os.makedirs(os.path.dirname(local_data_path))
             except OSError as exc:
                 if exc.errno != errno.EEXIST:
                     raise
 
-        prompt_download()
+        prompt_download(local_data_path)
 
     print('Unpaywall dataset ready. Reading...')
     print()
 
-    with gzip.open(LOCAL_DATA_PATH, 'rt') as stream, open('out.mrc', 'wb') as out:
+    with gzip.open(local_data_path, 'rt') as stream, open(args.output_file, 'wb') as out:
         for line in tqdm(stream, unit=' articles', total=26078206, smoothing=0):
             marc = process_entry(line)
             if marc:
