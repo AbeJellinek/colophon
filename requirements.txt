@@ -1,0 +1,4 @@
+requests==2.22.0
+regex==2020.4.4
+tqdm==4.46.0
+pymarc==4.0.0
