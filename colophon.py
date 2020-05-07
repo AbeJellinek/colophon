@@ -36,6 +36,7 @@ from tqdm import tqdm
 from datetime import datetime
 from pymarc import Record, Field
 
+
 URL_BASE = 'https://unpaywall-data-snapshots.s3-us-west-2.amazonaws.com/'
 LOCAL_DATA_PATH = 'data/unpaywall_snapshot.jsonl.gz'
 
