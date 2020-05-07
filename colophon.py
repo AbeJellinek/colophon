@@ -162,6 +162,14 @@ def to_marc(obj):
                 'a', f"Article from: {obj['journal_name']}. DOI: {obj['doi_url']}",
             ]))
 
+    record.add_field(Field(
+            tag = '856',
+            indicators = ['4', '0'],
+            subfields = [
+                'u', obj['best_oa_location']['url'],
+                'y', 'View article as PDF'
+            ]))
+
     # print(str(record))
     return record.as_marc()
 
@@ -180,7 +188,7 @@ def process_entry(line):
 
 def main():
     parser = argparse.ArgumentParser(description='Process Unpaywall data and output MARC.')
-    parser.add_argument('-f', action='append', dest='filter',
+    parser.add_argument('-f', action='append', dest='filter', default=['filters/jordan'],
                         help='specify path to a file containing paper title regex')
     parser.add_argument('-d', dest='dataset', default='data/unpaywall_snapshot.jsonl.gz',
                         help='specify path to the Unpaywall dataset in GZIP format')
@@ -219,6 +227,7 @@ def main():
     print()
 
     with gzip.open(local_data_path, 'rt') as stream, open(args.output_file, 'wb') as out:
+        # total here is just an estimate:
         for line in tqdm(stream, unit=' articles', total=26078206, smoothing=0):
             marc = process_entry(line)
             if marc:
