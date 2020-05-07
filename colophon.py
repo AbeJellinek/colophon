@@ -159,7 +159,7 @@ def to_marc(obj):
             tag = '500',
             indicators = [' ', ' '],
             subfields = [
-                'a', f"Article from: {obj['journal_name']}. DOI: {obj['doi_url']}",
+                'a', f"Article from {obj['journal_name']}.",
             ]))
 
     record.add_field(Field(
@@ -168,6 +168,14 @@ def to_marc(obj):
             subfields = [
                 'u', obj['best_oa_location']['url'],
                 'y', 'View article as PDF'
+            ]))
+
+    record.add_field(Field(
+            tag = '856',
+            indicators = [' ', ' '],
+            subfields = [
+                'u', obj['doi_url'],
+                'y', 'DOI'
             ]))
 
     # print(str(record))
