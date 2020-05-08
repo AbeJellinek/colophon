@@ -69,6 +69,7 @@ def prompt_download(local_data_path):
                 with open(local_data_path, 'wb') as handle:
                     with tqdm(
                         unit='B', unit_scale=True, unit_divisor=1000,
+                        miniters=1,
                         total=int(response.headers.get('content-length', 0))
                     ) as pbar:
                         for chunk in response.iter_content(chunk_size=4096):
@@ -76,7 +77,7 @@ def prompt_download(local_data_path):
                             pbar.update(len(chunk))
                 print('Done! Proceeding...')
             else:
-                print('Non-OK response: status code {response.status_code}')
+                print(f'Non-OK response: status code {response.status_code}')
                 os.exit(1)
         else:
             os.exit(1)
