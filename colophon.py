@@ -53,13 +53,13 @@ def latest_dataset():
         return
 
     path = URL_BASE + match.group(1)
-    last_modified = datetime.strptime(match.group(2), '%Y-%m-%dT%H:%M:%S.%f%z')
+    last_modified = datetime.strptime(match.group(2), '%Y-%m-%dT%H:%M:%S.%fZ')
     size_in_gb = int(match.group(3)) / 1_000_000_000
 
     return path, last_modified, size_in_gb
 
 def prompt_download(local_data_path):
-    print('No Unpaywall dataset found. Searching online...')
+    print('No local Unpaywall dataset found. Searching online...')
     path, last_modified, size_in_gb = latest_dataset()
     if path:
         print(f'Dataset found. Last update: {last_modified:%d %b %Y}.')
@@ -204,7 +204,7 @@ def main():
                         help='specify path of the MRC file to output to')
 
     args = parser.parse_args()
-    
+
     local_data_path = args.dataset
 
     for filename in args.filter:
