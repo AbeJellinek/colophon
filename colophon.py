@@ -25,6 +25,7 @@
 
 import os
 import os.path
+import sys
 import requests
 import regex as re
 import errno
@@ -53,27 +54,37 @@ def latest_dataset():
         return
 
     path = URL_BASE + match.group(1)
-    last_modified = datetime.strptime(match.group(2), '%Y-%m-%dT%H:%M:%S.%f%z')
+    last_modified = datetime.strptime(match.group(2), '%Y-%m-%dT%H:%M:%S.%fZ')
     size_in_gb = int(match.group(3)) / 1_000_000_000
 
     return path, last_modified, size_in_gb
 
 def prompt_download(local_data_path):
-    print('No Unpaywall dataset found. Searching online...')
+    print('No local Unpaywall dataset found. Searching online...')
     path, last_modified, size_in_gb = latest_dataset()
     if path:
         print(f'Dataset found. Last update: {last_modified:%d %b %Y}.')
         if input(f'Download this {size_in_gb:1.1f} GB dataset now? [Y/n] ').lower() != 'n':
             response = requests.get(path, stream=True)
-            with open(local_data_path, 'wb') as handle:
-                for data in tqdm(response.iter_content()):
-                    handle.write(data)
-            print('Done! Proceeding...')
+            if response.ok:
+                with open(local_data_path, 'wb') as handle:
+                    with tqdm(
+                        unit='B', unit_scale=True, unit_divisor=1000,
+                        miniters=1,
+                        total=int(response.headers.get('content-length', 0))
+                    ) as pbar:
+                        for chunk in response.iter_content(chunk_size=4096):
+                            handle.write(chunk)
+                            pbar.update(len(chunk))
+                print('Done! Proceeding...')
+            else:
+                print(f'Non-OK response: status code {response.status_code}')
+                sys.exit(1)
         else:
-            os.exit(1)
+            sys.exit(1)
     else:
         print('ERROR: No dataset found online.')
-        os.exit(99)
+        sys.exit(99)
 
 def format_author(author, reverse=True):
     if 'given' in author:
@@ -204,7 +215,7 @@ def main():
                         help='specify path of the MRC file to output to')
 
     args = parser.parse_args()
-    
+
     local_data_path = args.dataset
 
     for filename in args.filter:
@@ -217,7 +228,7 @@ def main():
 
     if os.path.isfile(args.output_file):
         if input('Output file exists! Overwrite? [y/N] ').lower() != 'y':
-            os.exit(1)
+            sys.exit(1)
 
     downloaded = os.path.isfile(local_data_path)
 
