@@ -25,6 +25,7 @@
 
 import os
 import os.path
+import sys
 import requests
 import regex as re
 import errno
@@ -78,12 +79,12 @@ def prompt_download(local_data_path):
                 print('Done! Proceeding...')
             else:
                 print(f'Non-OK response: status code {response.status_code}')
-                os.exit(1)
+                sys.exit(1)
         else:
-            os.exit(1)
+            sys.exit(1)
     else:
         print('ERROR: No dataset found online.')
-        os.exit(99)
+        sys.exit(99)
 
 def format_author(author, reverse=True):
     if 'given' in author:
@@ -227,7 +228,7 @@ def main():
 
     if os.path.isfile(args.output_file):
         if input('Output file exists! Overwrite? [y/N] ').lower() != 'y':
-            os.exit(1)
+            sys.exit(1)
 
     downloaded = os.path.isfile(local_data_path)
 
