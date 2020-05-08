@@ -65,10 +65,19 @@ def prompt_download(local_data_path):
         print(f'Dataset found. Last update: {last_modified:%d %b %Y}.')
         if input(f'Download this {size_in_gb:1.1f} GB dataset now? [Y/n] ').lower() != 'n':
             response = requests.get(path, stream=True)
-            with open(local_data_path, 'wb') as handle:
-                for data in tqdm(response.iter_content()):
-                    handle.write(data)
-            print('Done! Proceeding...')
+            if response.ok:
+                with open(local_data_path, 'wb') as handle:
+                    with tqdm(
+                        unit='B', unit_scale=True, unit_divisor=1000,
+                        total=int(response.headers.get('content-length', 0))
+                    ) as pbar:
+                        for chunk in response.iter_content(chunk_size=4096):
+                            handle.write(chunk)
+                            pbar.update(len(chunk))
+                print('Done! Proceeding...')
+            else:
+                print('Non-OK response: status code {response.status_code}')
+                os.exit(1)
         else:
             os.exit(1)
     else:
