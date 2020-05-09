@@ -32,6 +32,7 @@ import errno
 import gzip
 import json
 import argparse
+import unicodedata
 
 from tqdm import tqdm
 from datetime import datetime
@@ -192,6 +193,10 @@ def to_marc(obj):
     # print(str(record))
     return record.as_marc()
 
+def strip_diacritics(s):
+   return ''.join(c for c in unicodedata.normalize('NFD', s)
+                  if unicodedata.category(c) != 'Mn')
+
 def process_entry(line):
     obj = json.loads(line)
 
@@ -200,9 +205,9 @@ def process_entry(line):
     if oa_location is None or obj['title'] is None:
         return
 
-    title_lower = obj['title'].lower()
+    title_normalized = strip_diacritics(obj['title']).lower()
 
-    if any(pattern.findall(title_lower) for pattern in filters):
+    if any(pattern.findall(title_normalized) for pattern in filters):
         return to_marc(obj)
 
 def main():
@@ -247,7 +252,7 @@ def main():
 
     with gzip.open(local_data_path, 'rt') as stream, open(args.output_file, 'wb') as out:
         # total here is just an estimate:
-        for line in tqdm(stream, unit=' articles', total=26078206, smoothing=0):
+        for line in tqdm(stream, unit=' articles', total=27602461, smoothing=0):
             marc = process_entry(line)
             if marc:
                 out.write(marc)
