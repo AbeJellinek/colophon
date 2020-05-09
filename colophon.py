@@ -33,6 +33,7 @@ import gzip
 import json
 import argparse
 import unicodedata
+import shutil
 
 from tqdm import tqdm
 from datetime import datetime
@@ -56,31 +57,33 @@ def latest_dataset():
 
     path = URL_BASE + match.group(1)
     last_modified = datetime.strptime(match.group(2), '%Y-%m-%dT%H:%M:%S.%fZ')
-    size_in_gb = int(match.group(3)) / 1_000_000_000
+    size = int(match.group(3))
 
-    return path, last_modified, size_in_gb
+    return path, last_modified, size
 
 def prompt_download(local_data_path):
     print('No local Unpaywall dataset found. Searching online...')
-    path, last_modified, size_in_gb = latest_dataset()
+    path, last_modified, size = latest_dataset()
     if path:
+        size_in_gb = size / 1073741824
+
         print(f'Dataset found. Last update: {last_modified:%d %b %Y}.')
+
         if input(f'Download this {size_in_gb:1.1f} GB dataset now? [Y/n] ').lower() != 'n':
-            response = requests.get(path, stream=True)
-            if response.ok:
-                with open(local_data_path, 'wb') as handle:
-                    with tqdm(
-                        unit='B', unit_scale=True, unit_divisor=1000,
-                        miniters=1,
-                        total=int(response.headers.get('content-length', 0))
-                    ) as pbar:
-                        for chunk in response.iter_content(chunk_size=4096):
-                            handle.write(chunk)
-                            pbar.update(len(chunk))
-                print('Done! Proceeding...')
-            else:
-                print(f'Non-OK response: status code {response.status_code}')
-                sys.exit(1)
+            with requests.get(path, stream=True) as response:
+                if response.ok:
+                    with open(local_data_path, 'wb') as handle:
+                        with tqdm(
+                            unit='B', unit_scale=True, unit_divisor=1024, miniters=1,
+                            total=size, smoothing=0
+                        ) as pbar:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                handle.write(chunk)
+                                pbar.update(len(chunk))
+                    print('Done! Proceeding...')
+                else:
+                    print(f'Non-OK response: status code {response.status_code}')
+                    sys.exit(1)
         else:
             sys.exit(1)
     else:
