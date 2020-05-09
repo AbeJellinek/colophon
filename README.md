@@ -6,7 +6,7 @@ Colophon traverses the database compiled by the wonderful [Unpaywall](https://un
 
 Clone the repository and use [pip](https://pip.pypa.io/en/stable/) to install the requirements. Colophon requires Python 3.
 
-```bash
+```
 $ git clone https://github.com/AbeJellinek/colophon.git
 $ cd colophon
 $ pip install -r requirements.txt
@@ -14,7 +14,7 @@ $ pip install -r requirements.txt
 
 ## Usage
 
-```bash
+```
 $ python3 colophon.py --help
 usage: colophon.py [-h] [-f FILTER] [-d DATASET] [-o OUTPUT_FILE]
 
