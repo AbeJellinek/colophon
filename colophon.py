@@ -8,8 +8,9 @@
 #     * Redistributions in binary form must reproduce the above copyright
 #       notice, this list of conditions and the following disclaimer in the
 #       documentation and/or other materials provided with the distribution.
-#     * The name of the author may not be used to endorse or promote products
-#       derived from this software without specific prior written permission.
+#     * Neither the name of the author not the names of its contributors may
+#       be used to endorse or promote products derived from this software
+#       without specific prior written permission.
 
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 # ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
@@ -34,6 +35,7 @@ import json
 import argparse
 import unicodedata
 import shutil
+import csv
 
 from tqdm import tqdm
 from datetime import datetime
@@ -41,9 +43,27 @@ from pymarc import Record, Field
 
 
 URL_BASE = 'https://unpaywall-data-snapshots.s3-us-west-2.amazonaws.com/'
+FIELD_NAMES = ['Primary Author', 'Title', 'Year', 'Journal', 'PDF', 'DOI', 'Full JSON']
 
 title_splitter = re.compile(r'([:;\\/\p{Pd},.])')
 filters = []
+
+
+def prompt(question, default=True):
+    choices = '[Y/n]' if default else '[y/N]'
+    default_choice = 'Y' if default else 'N'
+    user_entered = input(f'{question} {choices} ').strip().lower()
+
+    while user_entered and user_entered != 'y' and user_entered != 'n':
+        user_entered = input(' ' * max(len(question) - 3, 0) + \
+            f' ?? {choices} (or press enter for {default_choice}) ').strip().lower()
+
+    if not user_entered:
+        return default
+    elif user_entered == 'y':
+        return True
+    else:
+        return False
 
 def latest_dataset():
     r = requests.get(URL_BASE)
@@ -61,15 +81,26 @@ def latest_dataset():
 
     return path, last_modified, size
 
-def prompt_download(local_data_path):
-    print('No local Unpaywall dataset found. Searching online...')
+def run_download(args):
+    local_data_path = args.path
+
     path, last_modified, size = latest_dataset()
     if path:
         size_in_gb = size / 1073741824
 
         print(f'Dataset found. Last update: {last_modified:%d %b %Y}.')
 
-        if input(f'Download this {size_in_gb:1.1f} GB dataset now? [Y/n] ').lower() != 'n':
+        if prompt(f'Download this {size_in_gb:1.1f} GB dataset?', default=True):
+            if os.path.isfile(local_data_path) \
+                and not prompt('Output file exists! Replace?', default=False):
+                sys.exit(0)
+
+            try:
+                os.makedirs(os.path.dirname(local_data_path))
+            except OSError as exc:
+                if exc.errno != errno.EEXIST:
+                    raise
+
             with requests.get(path, stream=True) as response:
                 if response.ok:
                     with open(local_data_path, 'wb') as handle:
@@ -82,12 +113,12 @@ def prompt_download(local_data_path):
                                 pbar.update(len(chunk))
                     print('Done! Proceeding...')
                 else:
-                    print(f'Non-OK response: status code {response.status_code}')
+                    print(f'ERROR: Download failed with status code {response.status_code}.', file=sys.stderr)
                     sys.exit(1)
         else:
-            sys.exit(1)
+            sys.exit(0)
     else:
-        print('ERROR: No dataset found online.')
+        print('ERROR: No dataset found online.', file=sys.stderr)
         sys.exit(99)
 
 def format_author(author, reverse=True):
@@ -102,6 +133,7 @@ def format_author(author, reverse=True):
 def format_authors(authors):
     if not authors:
         return ''
+
     first_author = format_author(authors[0], reverse=True)
     rest = [format_author(author, reverse=False) for author in authors[1:]]
 
@@ -111,6 +143,18 @@ def format_authors(authors):
         return f'{first_author} and {rest[0]}'
     else:
         return f"{first_author}, {', '.join(rest[:-1])}, and {rest[-1]}"
+
+def to_csv(obj, json):
+    return {
+        'Primary Author': format_author(obj['z_authors'][0], reverse=True) \
+            if obj['z_authors'] else 'Unknown',
+        'Title': obj['title'],
+        'Year': obj['year'],
+        'Journal': obj['journal_name'],
+        'PDF': obj['best_oa_location']['url'],
+        'DOI': obj['doi_url'],
+        'Full JSON': json
+    }
 
 def to_marc(obj):
     primary_author = format_author(obj['z_authors'][0], reverse=True) if obj['z_authors'] else None
@@ -200,65 +244,102 @@ def strip_diacritics(s):
    return ''.join(c for c in unicodedata.normalize('NFD', s)
                   if unicodedata.category(c) != 'Mn')
 
-def process_entry(line):
-    obj = json.loads(line)
+def stream_to_csv(stream):
+    for line in stream:
+        obj = json.loads(line)
 
-    oa_location = obj['best_oa_location']
+        oa_location = obj['best_oa_location']
 
-    if oa_location is None or obj['title'] is None:
-        return
+        if oa_location is None or obj['title'] is None:
+            continue
 
-    title_normalized = strip_diacritics(obj['title']).lower()
+        title_normalized = strip_diacritics(obj['title']).lower()
 
-    if any(pattern.findall(title_normalized) for pattern in filters):
-        return to_marc(obj)
+        if any(pattern.findall(title_normalized) for pattern in filters):
+            yield to_csv(obj, line)
 
-def main():
-    parser = argparse.ArgumentParser(description='Process Unpaywall data and output MARC.')
-    parser.add_argument('-f', action='append', dest='filter', default=['filters/jordan'],
-                        help='specify path to a file containing paper title regex')
-    parser.add_argument('-d', dest='dataset', default='data/unpaywall_snapshot.jsonl.gz',
-                        help='specify path to the Unpaywall dataset in GZIP format')
-    parser.add_argument('-o', dest='output_file', default='out.mrc',
-                        help='specify path of the MRC file to output to')
+def stream_to_marc(stream):
+    for row in stream:
+        obj = json.loads(row['Full JSON'])
+        yield to_marc(obj)
 
-    args = parser.parse_args()
-
-    local_data_path = args.dataset
-
-    for filename in args.filter:
+def run_filter(args):
+    for filename in args.pattern:
         with open(filename, 'r') as file:
             filters.append(re.compile(file.read().strip()))
 
-    print()
-    print('Colophon 1.0 by Abe Jellinek <jellinek@berkeley.edu>')
-    print('Checking data...')
-
-    if os.path.isfile(args.output_file):
-        if input('Output file exists! Overwrite? [y/N] ').lower() != 'y':
+    if args.output_file and os.path.isfile(args.output_file):
+        if not prompt('Output file exists! Overwrite?', default=False):
             sys.exit(1)
 
-    downloaded = os.path.isfile(local_data_path)
+    downloaded = os.path.isfile(args.dataset)
 
     if not downloaded:
-        if not os.path.exists(os.path.dirname(local_data_path)):
-            try:
-                os.makedirs(os.path.dirname(local_data_path))
-            except OSError as exc:
-                if exc.errno != errno.EEXIST:
-                    raise
+        python_command = os.path.basename(sys.executable)
+        print('ERROR: No downloaded dataset found. Can be downloaded with:', file=sys.stderr)
+        print(f'    {python_command} {sys.argv[0]} dl', file=sys.stderr)
+        sys.exit(1)
 
-        prompt_download(local_data_path)
+    with gzip.open(args.dataset, 'rt') as stream:
+        if not args.output_file or args.output_file == '-':
+            writer = csv.DictWriter(sys.stdout, fieldnames=FIELD_NAMES)
+            writer.writeheader()
 
-    print('Unpaywall dataset ready. Reading...')
-    print()
+            for line in stream_to_csv(stream):
+                writer.writerow(line)
+        else:
+            with open(args.output_file, 'w', encoding='utf-8') as out:
+                writer = csv.DictWriter(out, fieldnames=FIELD_NAMES)
+                writer.writeheader()
 
-    with gzip.open(local_data_path, 'rt') as stream, open(args.output_file, 'wb') as out:
-        # total here is just an estimate:
-        for line in tqdm(stream, unit=' articles', total=27602461, smoothing=0):
-            marc = process_entry(line)
-            if marc:
-                out.write(marc)
+                # total here is just an estimate:
+                for line in stream_to_csv(tqdm(stream, unit=' articles', total=114164038, smoothing=0)):
+                    writer.writerow(line)
+
+def run_marc(args):
+    with open(args.csv) as csv_file:
+        if not args.output_file or args.output_file == '-':
+            reader = csv.DictReader(csv_file, fieldnames=FIELD_NAMES)
+            next(reader) # read through header
+            for marc in stream_to_marc(reader):
+                sys.stdout.buffer.write(marc)
+        else:
+            with open(args.output_file, 'wb') as out:
+                reader = csv.DictReader(csv_file, fieldnames=FIELD_NAMES)
+                next(reader) # read through header
+                for marc in stream_to_marc(reader):
+                    out.write(marc)
+
+def main():
+    parser = argparse.ArgumentParser(description='Filter Unpaywall data for library use.')
+    subparsers = parser.add_subparsers(required=True)
+
+    parser_dl = subparsers.add_parser('download', aliases=['dl'])
+    parser_dl.add_argument('-o', dest='path', default='data/unpaywall_snapshot.jsonl.gz',
+        help='store in the specified location [optional, default location recommended]')
+    parser_dl.set_defaults(func=run_download)
+
+    parser_filter = subparsers.add_parser('filter')
+    parser_filter.add_argument('-p', action='append', dest='pattern', default=['filters/jordan'],
+        help='specify path to a file containing paper title regex (repeat for OR)')
+    parser_filter.add_argument('-d', dest='dataset', default='data/unpaywall_snapshot.jsonl.gz',
+        help='specify path to the Unpaywall dataset in GZIP format')
+    parser_filter.add_argument('-o', dest='output_file',
+        help='output to specified CSV file [optional, default: stdout]')
+    parser_filter.set_defaults(func=run_filter)
+
+    parser_marc = subparsers.add_parser('marc')
+    parser_marc.add_argument('csv', help='input CSV file to process')
+    parser_marc.add_argument('-o', dest='output_file',
+        help='output to specified MARC file [optional, default: stdout]')
+    parser_marc.set_defaults(func=run_marc)
+
+    if len(sys.argv) < 2:
+        parser.print_usage()
+        sys.exit(1)
+
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == '__main__':

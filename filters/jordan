@@ -1,1 +1,1 @@
-petra|amman|jordanian|urdun|wadi rum|rum valley|nabata?ea|k(?:a|e)rak|aqaba|ajloun|jerash|jarash|madaba|qais|wadi musa|jordan\b(?!\s?(?:curve|algebra|operator|theorem|ideals|matri|block|'s theorem))
+\bpetra|\bamman|jordanian|\burdun|wadi rum|rum valley|nabata?ea|k(?:a|e)rak\b|aqaba|ajloun|jerash|jarash|\bmadaba|qais|wadi musa|jordan\b(?!\s?(?:curve|algebra|operator|theorem|ideals|matri|block|'s theorem|-Brouwer))
