@@ -16,16 +16,20 @@ $ pip install -r requirements.txt
 
 ```
 $ python3 colophon.py --help
-usage: colophon.py [-h] [-f FILTER] [-d DATASET] [-o OUTPUT_FILE]
+usage: colophon.py [-h] {download,dl,filter,marc} ...
 
-Process Unpaywall data and output MARC.
+Filter Unpaywall data for library use.
+
+positional arguments:
+  {download,dl,filter,marc}
 
 optional arguments:
-  -h, --help      show this help message and exit
-  -f FILTER       specify path to a file containing paper title regex
-  -d DATASET      specify path to the Unpaywall dataset in GZIP format
-  -o OUTPUT_FILE  specify path of the MRC file to output to
+  -h, --help            show this help message and exit
 ```
+
+Colophon has three main modules: `download`, `filter`, and `marc`. `download` downloads the latest Unpaywall dataset, `filter` filters it based on regex files that you pass in with `-p`, and `marc` converts the filtered CSV produced by `filter` into [MARC 21](https://www.loc.gov/marc/bibliographic/) data that can be imported into most major library software backends.
+
+For help with one of these modules, run `python3 colophon.py <module> --help`, i.e. `python3 colophon.py filter --help`.
 
 ## Contributing
 Pull requests are welcome.
