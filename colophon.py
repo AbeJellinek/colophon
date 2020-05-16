@@ -312,7 +312,7 @@ def run_marc(args):
 
 def main():
     parser = argparse.ArgumentParser(description='Filter Unpaywall data for library use.')
-    subparsers = parser.add_subparsers(required=True)
+    subparsers = parser.add_subparsers()
 
     parser_dl = subparsers.add_parser('download', aliases=['dl'])
     parser_dl.add_argument('-o', dest='path', default='data/unpaywall_snapshot.jsonl.gz',
